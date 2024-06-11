@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Page</title>
+    <style>
+        .dashboard-container {
+            margin: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .dashboard, .thingsboard-login {
+            width: 100%;
+            height: 600px;
+            border: none;
+        }
+        .device-list {
+            width: 100%;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .device-item {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .device-attributes {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+<h1>Welcome to ThingsBoard!</h1>
+<button id="logoutButton">Logout</button>
+<div class="dashboard-container" id="dashboard-container">
+
+</div>
+<div class="device-list" id="device-list">
+
+</div>
+
+<script>
+    document.getElementById('logoutButton').addEventListener('click', function() {
+        localStorage.removeItem('token');
+        window.location.href = '/';
+    });
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/';
+    }
+
+    async function fetchDevices() {
+        try {
+            const response = await fetch('/api/devices', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                displayDevices(result);
+            } else {
+                console.error('Failed to fetch devices');
+            }
+        } catch (error) {
+            console.error('An error occurred while fetching devices', error);
+        }
+    }
+
+    async function fetchAttributes(deviceId) {
+        try {
+            const response = await fetch(`/api/devices/${deviceId}/attributes`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                return await response.json();
+            } else {
+                console.error('Failed to fetch attributes');
+                return [];
+            }
+        } catch (error) {
+            console.error('An error occurred while fetching attributes', error);
+            return [];
+        }
+    }
+
+    async function setAttributes(deviceId, attributes) {
+        try {
+            const response = await fetch(`/api/devices/${deviceId}/attributes`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(attributes)
+            });
+
+            if (response.ok) {
+                console.log('Attributes set successfully');
+                // Refresh the attributes after setting them
+                refreshDeviceAttributes(deviceId);
+            } else {
+                console.error('Failed to set attributes');
+            }
+        } catch (error) {
+            console.error('An error occurred while setting attributes', error);
+        }
+    }
+
+    function displayDevices(devices) {
+        const container = document.getElementById('device-list');
+        container.innerHTML = devices.map(device => `
+            <div class="device-item">
+                <h3>${device.name}</h3>
+                <p>ID: ${device.id.id}</p>
+                <p>Label: ${device.label}</p>
+                <div class="device-attributes" id="attributes-${device.id.id}">
+
+                </div>
+                <form onsubmit="handleAttributeSubmit(event, '${device.id.id}')">
+                    <div>
+                        <label for="minTemperature-${device.id.id}">Min Temperature:</label>
+                        <input type="number" id="minTemperature-${device.id.id}" name="minTemperature">
+                    </div>
+                    <div>
+                        <label for="maxTemperature-${device.id.id}">Max Temperature:</label>
+                        <input type="number" id="maxTemperature-${device.id.id}" name="maxTemperature">
+                    </div>
+                    <div>
+                        <label for="minHumidity-${device.id.id}">Min Humidity:</label>
+                        <input type="number" id="minHumidity-${device.id.id}" name="minHumidity">
+                    </div>
+                    <div>
+                        <label for="maxHumidity-${device.id.id}">Max Humidity:</label>
+                        <input type="number" id="maxHumidity-${device.id.id}" name="maxHumidity">
+                    </div>
+                    <button type="submit">Set Attributes</button>
+                </form>
+            </div>
+        `).join('');
+
+        devices.forEach(device => {
+            refreshDeviceAttributes(device.id.id);
+        });
+    }
+
+    async function refreshDeviceAttributes(deviceId) {
+        const attributes = await fetchAttributes(deviceId);
+        const attributesContainer = document.getElementById(`attributes-${deviceId}`);
+        const filteredAttributes = attributes.filter(attr =>
+            attr.key !== 'active' && attr.key !== 'inactivityAlarmTime'
+        );
+        attributesContainer.innerHTML = filteredAttributes.map(attr => `
+            <p>${attr.key}: ${attr.value}</p>
+        `).join('');
+    }
+
+    function handleAttributeSubmit(event, deviceId) {
+        event.preventDefault();
+        const form = event.target;
+        const attributes = {
+            minTemperature: form.minTemperature.value,
+            maxTemperature: form.maxTemperature.value,
+            minHumidity: form.minHumidity.value,
+            maxHumidity: form.maxHumidity.value
+        };
+        setAttributes(deviceId, attributes);
+    }
+
+    async function fetchDashboards() {
+        try {
+            const response = await fetch('/api/proxy/dashboard', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                const dashboards = result.data;
+                if (dashboards.length > 0) {
+                    const dashboardId = dashboards[0].id.id;
+                    displayDashboard(dashboardId);
+                } else {
+                    console.error('No dashboards available for the user.');
+                }
+            } else if (response.status === 403) {
+                showThingsBoardLogin();
+            } else {
+                console.error('Failed to fetch dashboards');
+            }
+        } catch (error) {
+            console.error('An error occurred while fetching dashboards', error);
+        }
+    }
+
+    function displayDashboard(dashboardId) {
+        const container = document.getElementById('dashboard-container');
+        container.innerHTML = `
+            <iframe src="http://161.53.19.19:45080/dashboard/${dashboardId}" class="dashboard"></iframe>
+        `;
+    }
+
+    function showThingsBoardLogin() {
+        const container = document.getElementById('dashboard-container');
+        container.innerHTML = `
+            <iframe src="http://161.53.19.19:45080/login" class="thingsboard-login"></iframe>
+        `;
+    }
+
+    fetchDashboards();
+    fetchDevices();
+</script>
+</body>
+</html>
