@@ -92,7 +92,7 @@ public class ThingsBoardService {
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(attributes, headers);
 
         restTemplate.exchange(
-                THINGSBOARD_BASE_URL + "/api/plugins/telemetry/DEVICE/" + deviceId + "/attributes/SERVER_SCOPE",
+                THINGSBOARD_BASE_URL + "/api/plugins/telemetry/DEVICE/" + deviceId + "/attributes/SHARED_SCOPE",
                 HttpMethod.POST,
                 entity,
                 Void.class
